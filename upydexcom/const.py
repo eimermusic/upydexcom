@@ -1,8 +1,8 @@
 """Constants used in pydexcom."""
 
-import logging
+# import logging
 
-_LOGGER = logging.getLogger("pydexcom")
+# _LOGGER = logging.getLogger("pydexcom")
 
 
 # Dexcom Share API base urls

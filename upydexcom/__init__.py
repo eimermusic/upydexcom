@@ -1,12 +1,10 @@
 """The pydexcom module for interacting with Dexcom Share API."""
-import datetime
-
-import requests
+import urequests as requests
 
 import re
 
 from .const import (
-    _LOGGER,
+    # _LOGGER,
     ACCOUNT_ERROR_ACCOUNT_NOT_FOUND,
     ACCOUNT_ERROR_PASSWORD_INVALID,
     ACCOUNT_ERROR_PASSWORD_NULL_EMPTY,
@@ -51,9 +49,7 @@ class GlucoseReading:
             self.trend = DEXCOM_TREND_DIRECTIONS.get(self.trend, 0)
         self.trend_description = DEXCOM_TREND_DESCRIPTIONS[self.trend]
         self.trend_arrow = DEXCOM_TREND_ARROWS[self.trend]
-        self.time = datetime.datetime.fromtimestamp(
-            int(re.sub("[^0-9]", "", json_glucose_reading["WT"])) / 1000.0
-        )
+        self.time = int(re.sub("[^0-9]", "", json_glucose_reading["WT"])) / 1000.0
         # Drop the redundant timestamp fields
         json_glucose_reading.pop('DT', None)
         json_glucose_reading.pop('ST', None)
@@ -83,22 +79,29 @@ class Dexcom:
         """Send request to Dexcom Share API."""
         try:
             url = f"{self.base_url}/{endpoint}"
-            _LOGGER.debug(f"{method} request to {endpoint}:")
-            _LOGGER.debug(f"url: {url} params:{params}, json: {json}")
+            print(f"[debug]{method} request to {endpoint}:")
+            print(f"[debug]url: {url} params:{params}, json: {json}")
+
+            if params:
+                param_string = "?"
+                for key, value in params.items():
+                    param_string += f"{key}={value}&"
+                url += param_string[:-1]
+
             r = requests.request(
                 method,
                 url,
-                params=params,
                 json=json,
             )
-            _LOGGER.debug(f"{method} request response {r.status_code}:")
-            _LOGGER.debug(f"json: {r.json()}")
-            r.raise_for_status()
+            print(f"[debug]{method} request response {r.status_code}:")
+            # print(f"[debug]content: {r.content()}")
+            # print(f"[debug]json: {r.json()}")
+            # r.raise_for_status()
             return r.json()
-        except requests.HTTPError:
-            _LOGGER.error(f"json: {r.json()}")
+        except ValueError:
+            print(f"[error]json: {r.json()}")
             if r.status_code == 500:
-                _LOGGER.debug(f'{r.json()["Code"]}: {r.json()["Message"]}')
+                print(f'[debug]{r.json()["Code"]}: {r.json()["Message"]}')
                 if r.json()["Code"] == "SessionNotValid":
                     raise SessionError(SESSION_ERROR_SESSION_NOT_VALID)
                 elif r.json()["Code"] == "SessionIdNotFound":
@@ -115,44 +118,44 @@ class Dexcom:
                     if "password" in r.json()["Message"]:
                         raise AccountError(ACCOUNT_ERROR_PASSWORD_NULL_EMPTY)
                 else:
-                    _LOGGER.error(f'{r.json()["Code"]}: {r.json()["Message"]}')
+                    print(f'[error]{r.json()["Code"]}: {r.json()["Message"]}')
             else:
-                _LOGGER.error(f"{r.status_code}: {r.json()}")
+                print(f"[error]{r.status_code}: {r.json()}")
         except Exception:
-            _LOGGER.error(r.status_code)
-            _LOGGER.error("Unknown request error")
+            # print(f"[error]{r.status_code}")
+            print("[error]Unknown request error")
         return None
 
     def _validate_session_id(self):
         """Validate session id."""
         if not self.session_id:
-            _LOGGER.error(SESSION_ERROR_SESSION_ID_NULL)
+            print(f"[error]{SESSION_ERROR_SESSION_ID_NULL}")
             raise SessionError(SESSION_ERROR_SESSION_ID_NULL)
         if self.session_id == DEFAULT_SESSION_ID:
-            _LOGGER.error(SESSION_ERROR_SESSION_ID_DEFAULT)
+            print(f"[error]{SESSION_ERROR_SESSION_ID_DEFAULT}")
             raise SessionError(SESSION_ERROR_SESSION_ID_DEFAULT)
 
     def _validate_account(self):
         """Validate credentials."""
         if not self.username:
-            _LOGGER.error(ACCOUNT_ERROR_USERNAME_NULL_EMPTY)
+            print(f"[error]{ACCOUNT_ERROR_USERNAME_NULL_EMPTY}")
             raise AccountError(ACCOUNT_ERROR_USERNAME_NULL_EMPTY)
         if not self.password:
-            _LOGGER.error(ACCOUNT_ERROR_PASSWORD_NULL_EMPTY)
+            print(f"[error]{ACCOUNT_ERROR_PASSWORD_NULL_EMPTY}")
             raise AccountError(ACCOUNT_ERROR_PASSWORD_NULL_EMPTY)
 
     def _validate_account_id(self):
         """Validate account ID."""
         if not self.account_id:
-            _LOGGER.error(SESSION_ERROR_ACCOUNT_ID_NULL_EMPTY)
+            print(f"[error]{SESSION_ERROR_ACCOUNT_ID_NULL_EMPTY}")
             raise AccountError(SESSION_ERROR_ACCOUNT_ID_NULL_EMPTY)
         if self.account_id == DEFAULT_SESSION_ID:
-            _LOGGER.error(SESSION_ERROR_ACCOUNT_ID_DEFAULT)
+            print(f"[error]{SESSION_ERROR_ACCOUNT_ID_DEFAULT}")
             raise AccountError(SESSION_ERROR_ACCOUNT_ID_DEFAULT)
 
     def create_session(self):
         """Create Dexcom Share API session by getting session id."""
-        _LOGGER.debug("Get session ID")
+        print("[debug]Get session ID")
         self._validate_account()
 
         json = {
@@ -170,7 +173,11 @@ class Dexcom:
         endpoint1 = DEXCOM_AUTHENTICATE_ENDPOINT
         endpoint2 = DEXCOM_LOGIN_ID_ENDPOINT
 
-        self.account_id = self._request("post", endpoint1, json=json)
+        print("[debug] do POST to endpoint1")
+        self.account_id = self._request("POST", endpoint1, json=json)
+        print("[debug] did POST to endpoint1. got account_id")
+        print(self.account_id)
+        print("---")
         try:
             self._validate_account_id()
 
@@ -180,7 +187,7 @@ class Dexcom:
                 "applicationId": DEXCOM_APPLICATION_ID,
             }
 
-            self.session_id = self._request("post", endpoint2, json=json)
+            self.session_id = self._request("POST", endpoint2, json=json)
             self._validate_session_id()
         except SessionError:
             raise AccountError(ACCOUNT_ERROR_UNKNOWN)
@@ -189,19 +196,19 @@ class Dexcom:
         """Verify if transmitter serial number is assigned to user."""
         self._validate_session_id()
         if not serial_number:
-            _LOGGER.error(ARGUEMENT_ERROR_SERIAL_NUMBER_NULL_EMPTY)
+            print(f"[error]{ARGUEMENT_ERROR_SERIAL_NUMBER_NULL_EMPTY}")
             raise ArguementError(ARGUEMENT_ERROR_SERIAL_NUMBER_NULL_EMPTY)
 
         params = {"sessionId": self.session_id, "serialNumber": serial_number}
         try:
             r = self._request(
-                "post", DEXCOM_VERIFY_SERIAL_NUMBER_ENDPOINT, params=params
+                "POST", DEXCOM_VERIFY_SERIAL_NUMBER_ENDPOINT, params=params
             )
         except SessionError:
-            _LOGGER.debug("Get new session ID")
+            print("[debug]Get new session ID")
             self.create_session()
             r = self._request(
-                "post", DEXCOM_VERIFY_SERIAL_NUMBER_ENDPOINT, params=params
+                "POST", DEXCOM_VERIFY_SERIAL_NUMBER_ENDPOINT, params=params
             )
         return r.json() == "AssignedToYou"
 
@@ -211,10 +218,10 @@ class Dexcom:
         """Get max_count glucose readings within specified minutes."""
         self._validate_session_id()
         if minutes < 1 or minutes > 1440:
-            _LOGGER.error(ARGUEMENT_ERROR_MINUTES_INVALID)
+            print(f"[error]{ARGUEMENT_ERROR_MINUTES_INVALID}")
             raise ArguementError(ARGUEMENT_ERROR_MINUTES_INVALID)
         if max_count < 1 or max_count > 288:
-            _LOGGER.error(ARGUEMENT_ERROR_MAX_COUNT_INVALID)
+            print(f"[error]{ARGUEMENT_ERROR_MAX_COUNT_INVALID}")
             raise ArguementError(ARGUEMENT_ERROR_MAX_COUNT_INVALID)
 
         params = {
@@ -224,7 +231,7 @@ class Dexcom:
         }
         try:
             json_glucose_readings = self._request(
-                "post", DEXCOM_GLUCOSE_READINGS_ENDPOINT, params=params
+                "POST", DEXCOM_GLUCOSE_READINGS_ENDPOINT, params=params
             )
         except SessionError:
             self.create_session()
@@ -236,7 +243,7 @@ class Dexcom:
             }
 
             json_glucose_readings = self._request(
-                "post", DEXCOM_GLUCOSE_READINGS_ENDPOINT, params=params
+                "POST", DEXCOM_GLUCOSE_READINGS_ENDPOINT, params=params
             )
 
         glucose_readings = []
